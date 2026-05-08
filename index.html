@@ -65,7 +65,7 @@ body { font-family: 'DM Sans', sans-serif; background: var(--surface); min-heigh
 .spinner { width: 16px; height: 16px; border: 2px solid rgba(255,255,255,0.3); border-top-color: white; border-radius: 50%; animation: spin 0.7s linear infinite; display: inline-block; }
 @keyframes spin { to { transform: rotate(360deg); } }
 
-/* ── MODAL ── */
+/* MODAL */
 .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.5); z-index: 500; display: flex; align-items: flex-end; justify-content: center; }
 .modal-overlay.hidden { display: none; }
 .modal { background: white; border-radius: 20px 20px 0 0; padding: 24px 20px 36px; width: 100%; max-width: 560px; }
@@ -81,7 +81,15 @@ body { font-family: 'DM Sans', sans-serif; background: var(--surface); min-heigh
 .btn-modal-cancel { flex: 1; padding: 13px; background: var(--surface); border: 1px solid var(--border); border-radius: 12px; font-family: 'DM Sans', sans-serif; font-size: 14px; font-weight: 600; cursor: pointer; }
 .btn-modal-save { flex: 2; padding: 13px; background: #1a1a18; color: white; border: none; border-radius: 12px; font-family: 'DM Sans', sans-serif; font-size: 14px; font-weight: 600; cursor: pointer; }
 
-/* ── PRINT ── */
+/* CONFIRM MODAL */
+.confirm-modal { background: white; border-radius: 20px 20px 0 0; padding: 24px 20px 36px; width: 100%; max-width: 560px; }
+.confirm-title { font-family: 'DM Serif Display', serif; font-size: 18px; margin-bottom: 8px; }
+.confirm-text { font-size: 14px; color: var(--muted); margin-bottom: 20px; line-height: 1.5; }
+.confirm-btns { display: flex; gap: 8px; }
+.btn-confirm-cancel { flex: 1; padding: 13px; background: var(--surface); border: 1px solid var(--border); border-radius: 12px; font-family: 'DM Sans', sans-serif; font-size: 14px; font-weight: 600; cursor: pointer; }
+.btn-confirm-ok { flex: 2; padding: 13px; background: #DC2626; color: white; border: none; border-radius: 12px; font-family: 'DM Sans', sans-serif; font-size: 14px; font-weight: 600; cursor: pointer; }
+
+/* PRINT */
 @media print {
   body { background: white; }
   .app-view { display: none !important; }
@@ -158,7 +166,7 @@ body { font-family: 'DM Sans', sans-serif; background: var(--surface); min-heigh
 
 <div class="bottom-bar">
   <button class="btn-stampa" onclick="stampaPDF()">🖨️ Stampa</button>
-  <button class="btn-publish" id="btnPublish" onclick="publishToCalendar()" disabled>🔒 Accedi per pubblicare</button>
+  <button class="btn-publish" id="btnPublish" onclick="checkAndPublish()" disabled>🔒 Accedi per pubblicare</button>
 </div>
 </div>
 
@@ -182,6 +190,18 @@ body { font-family: 'DM Sans', sans-serif; background: var(--surface); min-heigh
   </div>
 </div>
 
+<!-- CONFIRM MODAL (duplicati) -->
+<div class="modal-overlay hidden" id="confirmOverlay">
+  <div class="confirm-modal">
+    <div class="confirm-title">⚠️ Mese già pubblicato</div>
+    <div class="confirm-text" id="confirmText">Questo mese è già stato pubblicato su Google Calendar. Vuoi cancellare gli eventi esistenti e ripubblicare?</div>
+    <div class="confirm-btns">
+      <button class="btn-confirm-cancel" onclick="closeConfirm()">Annulla</button>
+      <button class="btn-confirm-ok" onclick="republish()">Sì, ripubblica</button>
+    </div>
+  </div>
+</div>
+
 <div class="print-view" id="printView"></div>
 <div class="toast" id="toast"></div>
 
@@ -191,244 +211,128 @@ const CLIENT_ID = '638641620939-dajtsen2bmuuavurafn15gm3o70du4u6.apps.googleuser
 const SCOPES = 'https://www.googleapis.com/auth/calendar.events';
 const MESI = ['Gennaio','Febbraio','Marzo','Aprile','Maggio','Giugno','Luglio','Agosto','Settembre','Ottobre','Novembre','Dicembre'];
 const GG = ['Dom','Lun','Mar','Mer','Gio','Ven','Sab'];
+const STORAGE_KEY = 'gestione_casa_schedule';
 
 const MODALITA = [
-  { id: 'bovisio_nonno_tu',   label: 'Bovisio – Nonno porta, tu prendi',   emoji: '🏥', breve: ['Nonno porta','Tu 17:15'],    tata: true,  tariffa: 0,  color: { bg: '#EAF3DE', border: '#639922', text: '#3B6D11' } },
-  { id: 'bovisio_nonno_tata', label: 'Bovisio – Nonno porta, Tata prende', emoji: '🏥', breve: ['Nonno porta','Tata 17:15'],  tata: true,  tariffa: 15, color: { bg: '#FEF3E2', border: '#D97706', text: '#92400E' } },
-  { id: 'bovisio_tu_tata',    label: 'Bovisio – Tu porti, Tata prende',    emoji: '🏥', breve: ['Tu porti','Tata 17:15'],    tata: true,  tariffa: 15, color: { bg: '#FDE8F0', border: '#DB2777', text: '#9D174D' } },
-  { id: 'monza_tu_tata',      label: 'Monza – Tu porti, Tata prende',      emoji: '🏢', breve: ['Tu porti','Tata 17:15'],    tata: true,  tariffa: 15, color: { bg: '#E6F1FB', border: '#378ADD', text: '#185FA5' } },
-  { id: 'monza_nonno_tata',   label: 'Monza – Nonno porta, Tata prende',   emoji: '🏢', breve: ['Nonno porta','Tata 17:15'], tata: true,  tariffa: 15, color: { bg: '#F3E8FF', border: '#9333EA', text: '#6B21A8' } },
-  { id: 'speciale',           label: 'Scuola chiusa / Orario modificato',  emoji: '📝', breve: ['Gestione','personalizzata'], tata: false, tariffa: 0,  color: { bg: '#F3F4F6', border: '#9CA3AF', text: '#374151' } },
+  { id: 'bovisio_nonno_tu',   label: 'Bovisio – Nonno porta, tu prendi',   emoji: '🏥', breve: ['Nonno porta','Tu 17:15'],    tariffa: 0,  color: { bg: '#EAF3DE', border: '#639922', text: '#3B6D11' } },
+  { id: 'bovisio_nonno_tata', label: 'Bovisio – Nonno porta, Tata prende', emoji: '🏥', breve: ['Nonno porta','Tata 17:15'],  tariffa: 15, color: { bg: '#FEF3E2', border: '#D97706', text: '#92400E' } },
+  { id: 'bovisio_tu_tata',    label: 'Bovisio – Tu porti, Tata prende',    emoji: '🏥', breve: ['Tu porti','Tata 17:15'],    tariffa: 15, color: { bg: '#FDE8F0', border: '#DB2777', text: '#9D174D' } },
+  { id: 'monza_tu_tata',      label: 'Monza – Tu porti, Tata prende',      emoji: '🏢', breve: ['Tu porti','Tata 17:15'],    tariffa: 15, color: { bg: '#E6F1FB', border: '#378ADD', text: '#185FA5' } },
+  { id: 'monza_nonno_tata',   label: 'Monza – Nonno porta, Tata prende',   emoji: '🏢', breve: ['Nonno porta','Tata 17:15'], tariffa: 15, color: { bg: '#F3E8FF', border: '#9333EA', text: '#6B21A8' } },
+  { id: 'speciale',           label: 'Scuola chiusa / Orario modificato',  emoji: '📝', breve: ['Gestione','personalizzata'], tariffa: 0,  color: { bg: '#F3F4F6', border: '#9CA3AF', text: '#374151' } },
 ];
 
 let currentYear = new Date().getFullYear();
 let currentMonth = new Date().getMonth();
-let schedule = {}; // { date: { id, note, tariffa } }
 let openDay = null;
 let accessToken = null;
+let tokenExpiry = null;
 let modalDate = null;
 let modalCost = 0;
 
+// ── STORAGE ──
+function loadSchedule() {
+  try { return JSON.parse(localStorage.getItem(STORAGE_KEY)) || {}; } catch(e) { return {}; }
+}
+function saveSchedule() {
+  try { localStorage.setItem(STORAGE_KEY, JSON.stringify(schedule)); } catch(e) {}
+}
+let schedule = loadSchedule();
+
 function getWorkdays(y, m) {
-  const days = []; const d = new Date(y, m, 1);
-  while (d.getMonth()===m) { if(d.getDay()!==0&&d.getDay()!==6) days.push(new Date(d)); d.setDate(d.getDate()+1); }
+  const days=[]; const d=new Date(y,m,1);
+  while(d.getMonth()===m){if(d.getDay()!==0&&d.getDay()!==6)days.push(new Date(d));d.setDate(d.getDate()+1);}
   return days;
 }
 function dateKey(d) { return d.toISOString().slice(0,10); }
 function changeMonth(delta) { currentMonth+=delta; if(currentMonth>11){currentMonth=0;currentYear++;} if(currentMonth<0){currentMonth=11;currentYear--;} render(); }
-
-function getDayData(date) {
-  return schedule[date] || { id: 'monza_tu_tata', note: '', tariffa: 15 };
-}
-function getMod(id) { return MODALITA.find(m=>m.id===id) || MODALITA[3]; }
+function getDayData(date) { return schedule[date] || { id: 'monza_tu_tata', note: '', tariffa: 15 }; }
+function getMod(id) { return MODALITA.find(m=>m.id===id)||MODALITA[3]; }
 
 function setMod(date, id) {
-  if (id === 'speciale') {
-    openDay = null; render();
-    openModal(date);
-    return;
-  }
-  const mod = getMod(id);
-  schedule[date] = { id, note: '', tariffa: mod.tariffa };
-  openDay = null; render();
+  if(id==='speciale'){ openDay=null; render(); openModal(date); return; }
+  const mod=getMod(id);
+  schedule[date]={ id, note:'', tariffa: mod.tariffa };
+  saveSchedule();
+  openDay=null; render();
 }
+function toggleDay(date) { openDay=openDay===date?null:date; render(); }
 
-function toggleDay(date) { openDay = openDay===date ? null : date; render(); }
-
-// ── MODAL ──
+// ── MODAL SPECIALE ──
 function openModal(date) {
-  modalDate = date;
-  const d = new Date(date);
-  const existing = schedule[date];
-  document.getElementById('modalTitle').textContent = `📝 ${GG[d.getDay()]} ${d.getDate()} ${MESI[d.getMonth()]}`;
-  document.getElementById('modalSub').textContent = 'Scuola chiusa o orario modificato';
-  document.getElementById('modalNote').value = existing?.id==='speciale' ? (existing.note||'') : '';
-  selectCost(existing?.id==='speciale' ? (existing.tariffa||0) : 0);
+  modalDate=date;
+  const d=new Date(date); const existing=schedule[date];
+  document.getElementById('modalTitle').textContent=`📝 ${GG[d.getDay()]} ${d.getDate()} ${MESI[d.getMonth()]}`;
+  document.getElementById('modalSub').textContent='Scuola chiusa o orario modificato';
+  document.getElementById('modalNote').value=existing?.id==='speciale'?(existing.note||''):'';
+  selectCost(existing?.id==='speciale'?(existing.tariffa||0):0);
   document.getElementById('modalOverlay').classList.remove('hidden');
 }
-
-function closeModal() {
-  document.getElementById('modalOverlay').classList.add('hidden');
-  modalDate = null;
-}
-
+function closeModal() { document.getElementById('modalOverlay').classList.add('hidden'); modalDate=null; }
 function selectCost(val) {
-  modalCost = val;
-  [0,15,50].forEach(v => {
-    document.getElementById('cost'+v).classList.toggle('selected', v===val);
-  });
+  modalCost=val;
+  [0,15,50].forEach(v=>{ document.getElementById('cost'+v).classList.toggle('selected',v===val); });
 }
-
 function saveSpecial() {
-  const note = document.getElementById('modalNote').value.trim();
-  schedule[modalDate] = { id: 'speciale', note, tariffa: modalCost };
+  const note=document.getElementById('modalNote').value.trim();
+  schedule[modalDate]={ id:'speciale', note, tariffa:modalCost };
+  saveSchedule();
   closeModal(); render();
 }
 
-// ── RENDER ──
-function render() {
-  const workdays = getWorkdays(currentYear, currentMonth);
-  document.getElementById('monthTitle').textContent = `${MESI[currentMonth]} ${currentYear}`;
+// ── CONFIRM DUPLICATI ──
+let existingEventIds = [];
+function closeConfirm() { document.getElementById('confirmOverlay').classList.add('hidden'); existingEventIds=[]; }
+async function checkAndPublish() {
+  if(!accessToken){ showToast('⚠️ Accedi prima'); return; }
+  // Check if token is still valid
+  if(tokenExpiry && Date.now() > tokenExpiry - 60000) { signIn(); return; }
 
-  document.getElementById('legendaItems').innerHTML = MODALITA.map(m =>
-    `<div class="legenda-item">
-      <div class="legenda-dot" style="background:${m.color.bg};border:1.5px solid ${m.color.border}"></div>
-      <span style="color:${m.color.text};font-weight:600">${m.emoji} ${m.label}</span>
-      ${m.tariffa>0 ? `<span style="margin-left:auto;color:#aaa;font-size:11px">€${m.tariffa}</span>` : ''}
-    </div>`).join('');
-
-  const weeks=[]; let week=[];
-  workdays.forEach(d=>{ week.push(d); if(d.getDay()===5||d===workdays[workdays.length-1]){weeks.push([...week]);week=[];} });
-
-  const grid=document.getElementById('calendarGrid'); grid.innerHTML='';
-  weeks.forEach(wk=>{
-    const lbl=document.createElement('div'); lbl.className='week-label';
-    lbl.textContent=`${wk[0].getDate()}–${wk[wk.length-1].getDate()} ${MESI[currentMonth].slice(0,3).toLowerCase()}`;
-    grid.appendChild(lbl);
-    const wg=document.createElement('div'); wg.className='week-grid';
-    wk.forEach(d=>{
-      const key=dateKey(d); const data=getDayData(key); const mod=getMod(data.id); const c=mod.color; const isOpen=openDay===key;
-      const card=document.createElement('div');
-      card.className='day-card'+(isOpen?' open':'');
-      card.style.cssText=`background:${c.bg};border-color:${isOpen?c.text:c.border}`;
-      card.onclick=(e)=>{e.stopPropagation();toggleDay(key);};
-
-      let costBadge = data.tariffa>0 ? `<div class="day-cost" style="color:${c.text}">€${data.tariffa}</div>` : '';
-      let noteEl = data.id==='speciale' && data.note ? `<div class="day-note" style="color:${c.text}">${data.note}</div>` : '';
-
-      card.innerHTML=`
-        <div class="day-name" style="color:${c.text}">${GG[d.getDay()]} ${d.getDate()}</div>
-        <div class="day-emoji">${mod.emoji}</div>
-        <div class="day-line" style="color:${c.text}">${mod.breve[0]}</div>
-        <div class="day-line" style="color:${c.text}">${mod.breve[1]}</div>
-        ${costBadge}${noteEl}`;
-
-      if(isOpen){
-        const drop=document.createElement('div'); drop.className='dropdown';
-        drop.innerHTML=`<div class="dropdown-header">${GG[d.getDay()]} ${d.getDate()} – Scegli modalità</div>`+
-          `<div class="dropdown-divider">Modalità standard</div>`+
-          MODALITA.filter(m=>m.id!=='speciale').map(m=>`
-            <div class="dropdown-item" style="${data.id===m.id?`background:${m.color.bg};color:${m.color.text};font-weight:600`:''}"
-              onclick="event.stopPropagation();setMod('${key}','${m.id}')">
-              <div class="dropdown-dot" style="background:${m.color.bg};border:1.5px solid ${m.color.border}"></div>
-              ${m.emoji} ${m.label}
-              ${m.tariffa>0?`<span class="dropdown-cost" style="color:${m.color.text}">€${m.tariffa}</span>`:''}
-            </div>`).join('')+
-          `<div class="dropdown-divider">Giornate speciali</div>`+
-          `<div class="dropdown-item" style="${data.id==='speciale'?`background:#F3F4F6;color:#374151;font-weight:600`:''}"
-            onclick="event.stopPropagation();setMod('${key}','speciale')">
-            <div class="dropdown-dot" style="background:#F3F4F6;border:1.5px solid #9CA3AF"></div>
-            📝 Scuola chiusa / Orario modificato
-          </div>`;
-        card.appendChild(drop);
-      }
-      wg.appendChild(card);
-    });
-    grid.appendChild(wg);
-  });
-
-  // Riepilogo
-  const tataDays = workdays.filter(d=>{ const data=getDayData(dateKey(d)); return data.tariffa>0; });
-  const totale = workdays.reduce((sum,d)=>sum+(getDayData(dateKey(d)).tariffa||0),0);
-  const uscite15 = workdays.filter(d=>getDayData(dateKey(d)).tariffa===15).length;
-  document.getElementById('statGiorni').textContent = tataDays.length;
-  document.getElementById('statUscite').textContent = uscite15;
-  document.getElementById('statTotale').textContent = `€${totale}`;
-  document.getElementById('tataTags').innerHTML = tataDays.map(d=>{
-    const data=getDayData(dateKey(d)); const mod=getMod(data.id);
-    return `<span class="tag" style="background:${mod.color.bg};color:${mod.color.text};border-color:${mod.color.border}">
-      ${GG[d.getDay()]} ${d.getDate()}${data.tariffa===50?' 💶':''}
-    </span>`;
-  }).join('');
-}
-
-// ── STAMPA ──
-function stampaPDF() {
-  const workdays = getWorkdays(currentYear, currentMonth);
-  const tataDays = workdays.filter(d=>getDayData(dateKey(d)).tariffa>0);
-  const totale = workdays.reduce((sum,d)=>sum+(getDayData(dateKey(d)).tariffa||0),0);
-
-  const weeks=[]; let week=[];
-  workdays.forEach(d=>{ week.push(d); if(d.getDay()===5||d===workdays[workdays.length-1]){weeks.push([...week]);week=[];} });
-
-  let weeksHTML='';
-  weeks.forEach(wk=>{
-    const firstDow=wk[0].getDay();
-    let cells='';
-    for(let i=1;i<firstDow;i++) cells+=`<div class="p-day empty"></div>`;
-    wk.forEach(d=>{
-      const key=dateKey(d); const data=getDayData(key); const mod=getMod(data.id);
-      if(data.id==='speciale'){
-        cells+=`<div class="p-day chiusa"><div class="p-day-num">${d.getDate()}</div><div class="p-day-tag">Giorno<br/>speciale</div>${data.note?`<div class="p-day-note">${data.note}</div>`:''}</div>`;
-      } else if(data.tariffa===50){
-        cells+=`<div class="p-day tata-full"><div class="p-day-num">${d.getDate()}</div><div class="p-day-tag">Tata Stefania<br/>giornata</div></div>`;
-      } else if(data.tariffa===15){
-        const sede=data.id.startsWith('bovisio')?'Bovisio':'Monza';
-        cells+=`<div class="p-day tata"><div class="p-day-num">${d.getDate()}</div><div class="p-day-tag">${sede}<br/>Tata Stefania</div></div>`;
-      } else {
-        cells+=`<div class="p-day free"><div class="p-day-num">${d.getDate()}</div><div class="p-day-tag">Giorno<br/>libero</div></div>`;
-      }
-    });
-    weeksHTML+=`<div class="p-week-block"><div class="p-week-label">${wk[0].getDate()}–${wk[wk.length-1].getDate()} ${MESI[currentMonth].slice(0,3).toLowerCase()}</div><div class="p-week-grid">${cells}</div></div>`;
-  });
-
-  document.getElementById('printView').innerHTML=`
-    <div class="print-header">
-      <div>
-        <div class="print-title">📅 Calendario Tata Stefania</div>
-        <div class="print-sub">${MESI[currentMonth]} ${currentYear} · Samuel</div>
-        <div class="print-sub">Orario standard: 17:15 – 18:30</div>
-      </div>
-      <div class="print-badge">
-        <div class="print-badge-label">Uscite mese</div>
-        <div class="print-badge-value">${tataDays.length}</div>
-        <div class="print-badge-sub">giorni con Samuel</div>
-      </div>
-    </div>
-    <div class="print-info">
-      <div class="print-info-item"><div class="pi-label">Bambino</div><div class="pi-value">Samuel</div></div>
-      <div class="print-info-item"><div class="pi-label">Ritiro standard</div><div class="pi-value">17:15</div></div>
-      <div class="print-info-item"><div class="pi-label">Fine standard</div><div class="pi-value">18:30</div></div>
-      <div class="print-info-item"><div class="pi-label">Mese</div><div class="pi-value">${MESI[currentMonth]} ${currentYear}</div></div>
-    </div>
-    <div class="p-cal-header">
-      <div class="p-day-name">Lun</div><div class="p-day-name">Mar</div><div class="p-day-name">Mer</div><div class="p-day-name">Gio</div><div class="p-day-name">Ven</div>
-    </div>
-    ${weeksHTML}
-    <div class="print-totale">
-      <div><div class="pt-label">Totale uscite ${MESI[currentMonth]}</div><div class="pt-value">${tataDays.length} giorni</div></div>
-      <div style="text-align:right"><div class="pt-detail">Orario standard: 17:15–18:30</div><div class="pt-detail">Giornata intera: €50</div></div>
-    </div>`;
-  window.print();
-}
-
-// ── AUTH ──
-let tokenClient;
-window.onload=()=>{ render(); document.addEventListener('click',()=>{openDay=null;render();}); };
-document.getElementById('modalOverlay').addEventListener('click',function(e){if(e.target===this)closeModal();});
-
-function signIn(){
-  if(!tokenClient){ tokenClient=google.accounts.oauth2.initTokenClient({client_id:CLIENT_ID,scope:SCOPES,callback:(resp)=>{if(resp.error){showToast('❌ Errore');return;}accessToken=resp.access_token;fetchUserInfo();}}); }
-  tokenClient.requestAccessToken();
-}
-function fetchUserInfo(){
-  fetch('https://www.googleapis.com/oauth2/v3/userinfo',{headers:{Authorization:`Bearer ${accessToken}`}}).then(r=>r.json()).then(info=>{
-    document.getElementById('authArea').innerHTML=`<div class="user-info"><img src="${info.picture}"/><span>${info.given_name}</span><button class="btn-logout" onclick="signOut()">Esci</button></div>`;
-    const btn=document.getElementById('btnPublish');btn.disabled=false;btn.textContent='📅 Pubblica su Google Calendar';
-    showToast('✅ Accesso effettuato!');
-  });
-}
-function signOut(){
-  accessToken=null;
-  document.getElementById('authArea').innerHTML=`<button class="btn-google" onclick="signIn()"><img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" width="16" alt="G"/>Accedi con Google</button>`;
-  const btn=document.getElementById('btnPublish');btn.disabled=true;btn.textContent='🔒 Accedi per pubblicare';
-}
-
-// ── PUBLISH ──
-async function publishToCalendar(){
-  if(!accessToken){showToast('⚠️ Accedi prima');return;}
   const btn=document.getElementById('btnPublish');
-  btn.disabled=true;btn.innerHTML='<span class="spinner"></span> Pubblicazione...';
+  btn.disabled=true; btn.innerHTML='<span class="spinner"></span> Controllo...';
+
+  // Search for existing events this month
+  const startOfMonth=`${currentYear}-${String(currentMonth+1).padStart(2,'0')}-01T00:00:00Z`;
+  const endOfMonth=new Date(currentYear,currentMonth+1,0);
+  const endStr=`${currentYear}-${String(currentMonth+1).padStart(2,'0')}-${String(endOfMonth.getDate()).padStart(2,'0')}T23:59:59Z`;
+
+  try {
+    const resp=await fetch(`https://www.googleapis.com/calendar/v3/calendars/primary/events?timeMin=${startOfMonth}&timeMax=${endStr}&q=Samuel&maxResults=200`,{
+      headers:{Authorization:`Bearer ${accessToken}`}
+    });
+    const data=await resp.json();
+    const events=(data.items||[]).filter(e=>e.summary&&e.summary.includes('Samuel'));
+    existingEventIds=events.map(e=>e.id);
+
+    btn.disabled=false; btn.textContent='📅 Pubblica su Google Calendar';
+
+    if(existingEventIds.length>0){
+      document.getElementById('confirmText').textContent=`Trovati ${existingEventIds.length} eventi di Samuel già presenti in ${MESI[currentMonth]}. Vuoi cancellarli e ripubblicare?`;
+      document.getElementById('confirmOverlay').classList.remove('hidden');
+    } else {
+      await doPublish();
+    }
+  } catch(e) {
+    btn.disabled=false; btn.textContent='📅 Pubblica su Google Calendar';
+    showToast('❌ Errore di connessione');
+  }
+}
+
+async function republish() {
+  closeConfirm();
+  const btn=document.getElementById('btnPublish');
+  btn.disabled=true; btn.innerHTML='<span class="spinner"></span> Cancello eventi...';
+  // Delete existing events
+  for(const id of existingEventIds){
+    try{ await fetch(`https://www.googleapis.com/calendar/v3/calendars/primary/events/${id}`,{method:'DELETE',headers:{Authorization:`Bearer ${accessToken}`}}); } catch(e){}
+  }
+  existingEventIds=[];
+  await doPublish();
+}
+
+async function doPublish(){
+  const btn=document.getElementById('btnPublish');
+  btn.disabled=true; btn.innerHTML='<span class="spinner"></span> Pubblicazione...';
   const workdays=getWorkdays(currentYear,currentMonth);
   let created=0,errors=0;
   for(const d of workdays){
@@ -436,7 +340,9 @@ async function publishToCalendar(){
     try{
       if(data.id==='speciale'){
         if(data.note){
-          await createEvent({summary:`📝 Samuel – ${data.note.slice(0,40)}`,description:data.note,start:{dateTime:`${ds}T08:00:00`,timeZone:'Europe/Rome'},end:{dateTime:`${ds}T18:30:00`,timeZone:'Europe/Rome'},colorId:'8',reminders:{useDefault:false,overrides:[{method:'popup',minutes:30}]}});
+          await createEvent({summary:`📝 Samuel – ${data.note.slice(0,50)}`,description:data.note,
+            start:{dateTime:`${ds}T08:00:00`,timeZone:'Europe/Rome'},end:{dateTime:`${ds}T18:30:00`,timeZone:'Europe/Rome'},
+            colorId:'8',reminders:{useDefault:false,overrides:[{method:'popup',minutes:30}]}});
           created++;
         }
         continue;
@@ -452,8 +358,8 @@ async function publishToCalendar(){
       if(data.tariffa===0){
         await createEvent({summary:'⏰ Prendi Samuel 17:15 – tu',start:{dateTime:`${ds}T17:15:00`,timeZone:'Europe/Rome'},end:{dateTime:`${ds}T17:30:00`,timeZone:'Europe/Rome'},colorId:'2',reminders:{useDefault:false,overrides:[{method:'popup',minutes:15}]}});
       } else {
-        const tataSummary = data.tariffa===50 ? '👩 Tata Stefania con Samuel – giornata intera' : '👩 Tata Stefania con Samuel 17:15–18:30';
-        await createEvent({summary:tataSummary,start:{dateTime:`${ds}T17:15:00`,timeZone:'Europe/Rome'},end:{dateTime:`${ds}T18:30:00`,timeZone:'Europe/Rome'},colorId:'6',reminders:{useDefault:false,overrides:[{method:'popup',minutes:15}]}});
+        const ts=data.tariffa===50?'👩 Tata Stefania con Samuel – giornata intera':'👩 Tata Stefania con Samuel 17:15–18:30';
+        await createEvent({summary:ts,start:{dateTime:`${ds}T17:15:00`,timeZone:'Europe/Rome'},end:{dateTime:`${ds}T18:30:00`,timeZone:'Europe/Rome'},colorId:'6',reminders:{useDefault:false,overrides:[{method:'popup',minutes:15}]}});
       }
       created++;
     }catch(e){errors++;}
@@ -467,6 +373,152 @@ async function createEvent(body){
   const r=await fetch('https://www.googleapis.com/calendar/v3/calendars/primary/events',{method:'POST',headers:{Authorization:`Bearer ${accessToken}`,'Content-Type':'application/json'},body:JSON.stringify(body)});
   if(!r.ok)throw new Error('error');
   return r.json();
+}
+
+// ── RENDER ──
+function render() {
+  const workdays=getWorkdays(currentYear,currentMonth);
+  document.getElementById('monthTitle').textContent=`${MESI[currentMonth]} ${currentYear}`;
+  document.getElementById('legendaItems').innerHTML=MODALITA.map(m=>
+    `<div class="legenda-item"><div class="legenda-dot" style="background:${m.color.bg};border:1.5px solid ${m.color.border}"></div>
+    <span style="color:${m.color.text};font-weight:600">${m.emoji} ${m.label}</span>
+    ${m.tariffa>0?`<span style="margin-left:auto;color:#aaa;font-size:11px">€${m.tariffa}</span>`:''}</div>`).join('');
+
+  const weeks=[]; let week=[];
+  workdays.forEach(d=>{week.push(d);if(d.getDay()===5||d===workdays[workdays.length-1]){weeks.push([...week]);week=[];}});
+
+  const grid=document.getElementById('calendarGrid'); grid.innerHTML='';
+  weeks.forEach(wk=>{
+    const lbl=document.createElement('div');lbl.className='week-label';
+    lbl.textContent=`${wk[0].getDate()}–${wk[wk.length-1].getDate()} ${MESI[currentMonth].slice(0,3).toLowerCase()}`;
+    grid.appendChild(lbl);
+    const wg=document.createElement('div');wg.className='week-grid';
+    wk.forEach(d=>{
+      const key=dateKey(d);const data=getDayData(key);const mod=getMod(data.id);const c=mod.color;const isOpen=openDay===key;
+      const card=document.createElement('div');
+      card.className='day-card'+(isOpen?' open':'');
+      card.style.cssText=`background:${c.bg};border-color:${isOpen?c.text:c.border}`;
+      card.onclick=(e)=>{e.stopPropagation();toggleDay(key);};
+      const costBadge=data.tariffa>0?`<div class="day-cost" style="color:${c.text}">€${data.tariffa}</div>`:'';
+      const noteEl=data.id==='speciale'&&data.note?`<div class="day-note" style="color:${c.text}">${data.note}</div>`:'';
+      card.innerHTML=`<div class="day-name" style="color:${c.text}">${GG[d.getDay()]} ${d.getDate()}</div>
+        <div class="day-emoji">${mod.emoji}</div>
+        <div class="day-line" style="color:${c.text}">${mod.breve[0]}</div>
+        <div class="day-line" style="color:${c.text}">${mod.breve[1]}</div>${costBadge}${noteEl}`;
+      if(isOpen){
+        const drop=document.createElement('div');drop.className='dropdown';
+        drop.innerHTML=`<div class="dropdown-header">${GG[d.getDay()]} ${d.getDate()} – Scegli modalità</div>
+          <div class="dropdown-divider">Modalità standard</div>`+
+          MODALITA.filter(m=>m.id!=='speciale').map(m=>`
+            <div class="dropdown-item" style="${data.id===m.id?`background:${m.color.bg};color:${m.color.text};font-weight:600`:''}"
+              onclick="event.stopPropagation();setMod('${key}','${m.id}')">
+              <div class="dropdown-dot" style="background:${m.color.bg};border:1.5px solid ${m.color.border}"></div>
+              ${m.emoji} ${m.label}
+              ${m.tariffa>0?`<span class="dropdown-cost" style="color:${m.color.text}">€${m.tariffa}</span>`:''}
+            </div>`).join('')+
+          `<div class="dropdown-divider">Giornate speciali</div>
+          <div class="dropdown-item" style="${data.id==='speciale'?`background:#F3F4F6;color:#374151;font-weight:600`:''}"
+            onclick="event.stopPropagation();setMod('${key}','speciale')">
+            <div class="dropdown-dot" style="background:#F3F4F6;border:1.5px solid #9CA3AF"></div>
+            📝 Scuola chiusa / Orario modificato
+          </div>`;
+        card.appendChild(drop);
+      }
+      wg.appendChild(card);
+    });
+    grid.appendChild(wg);
+  });
+
+  const tataDays=workdays.filter(d=>getDayData(dateKey(d)).tariffa>0);
+  const totale=workdays.reduce((sum,d)=>sum+(getDayData(dateKey(d)).tariffa||0),0);
+  const uscite15=workdays.filter(d=>getDayData(dateKey(d)).tariffa===15).length;
+  document.getElementById('statGiorni').textContent=tataDays.length;
+  document.getElementById('statUscite').textContent=uscite15;
+  document.getElementById('statTotale').textContent=`€${totale}`;
+  document.getElementById('tataTags').innerHTML=tataDays.map(d=>{
+    const data=getDayData(dateKey(d));const mod=getMod(data.id);
+    return `<span class="tag" style="background:${mod.color.bg};color:${mod.color.text};border-color:${mod.color.border}">${GG[d.getDay()]} ${d.getDate()}${data.tariffa===50?' 💶':''}</span>`;
+  }).join('');
+}
+
+// ── STAMPA ──
+function stampaPDF(){
+  const workdays=getWorkdays(currentYear,currentMonth);
+  const tataDays=workdays.filter(d=>getDayData(dateKey(d)).tariffa>0);
+  const weeks=[]; let week=[];
+  workdays.forEach(d=>{week.push(d);if(d.getDay()===5||d===workdays[workdays.length-1]){weeks.push([...week]);week=[];}});
+  let weeksHTML='';
+  weeks.forEach(wk=>{
+    const firstDow=wk[0].getDay(); let cells='';
+    for(let i=1;i<firstDow;i++) cells+=`<div class="p-day empty"></div>`;
+    wk.forEach(d=>{
+      const key=dateKey(d);const data=getDayData(key);
+      if(data.id==='speciale'){cells+=`<div class="p-day chiusa"><div class="p-day-num">${d.getDate()}</div><div class="p-day-tag">Giorno<br/>speciale</div>${data.note?`<div class="p-day-note">${data.note}</div>`:''}</div>`;}
+      else if(data.tariffa===50){cells+=`<div class="p-day tata-full"><div class="p-day-num">${d.getDate()}</div><div class="p-day-tag">Tata Stefania<br/>giornata</div></div>`;}
+      else if(data.tariffa===15){const sede=data.id.startsWith('bovisio')?'Bovisio':'Monza';cells+=`<div class="p-day tata"><div class="p-day-num">${d.getDate()}</div><div class="p-day-tag">${sede}<br/>Tata Stefania</div></div>`;}
+      else{cells+=`<div class="p-day free"><div class="p-day-num">${d.getDate()}</div><div class="p-day-tag">Giorno<br/>libero</div></div>`;}
+    });
+    weeksHTML+=`<div class="p-week-block"><div class="p-week-label">${wk[0].getDate()}–${wk[wk.length-1].getDate()} ${MESI[currentMonth].slice(0,3).toLowerCase()}</div><div class="p-week-grid">${cells}</div></div>`;
+  });
+  document.getElementById('printView').innerHTML=`
+    <div class="print-header">
+      <div><div class="print-title">📅 Calendario Tata Stefania</div><div class="print-sub">${MESI[currentMonth]} ${currentYear} · Samuel</div><div class="print-sub">Orario standard: 17:15 – 18:30</div></div>
+      <div class="print-badge"><div class="print-badge-label">Uscite mese</div><div class="print-badge-value">${tataDays.length}</div><div class="print-badge-sub">giorni con Samuel</div></div>
+    </div>
+    <div class="print-info">
+      <div class="print-info-item"><div class="pi-label">Bambino</div><div class="pi-value">Samuel</div></div>
+      <div class="print-info-item"><div class="pi-label">Ritiro standard</div><div class="pi-value">17:15</div></div>
+      <div class="print-info-item"><div class="pi-label">Fine standard</div><div class="pi-value">18:30</div></div>
+      <div class="print-info-item"><div class="pi-label">Mese</div><div class="pi-value">${MESI[currentMonth]} ${currentYear}</div></div>
+    </div>
+    <div class="p-cal-header"><div class="p-day-name">Lun</div><div class="p-day-name">Mar</div><div class="p-day-name">Mer</div><div class="p-day-name">Gio</div><div class="p-day-name">Ven</div></div>
+    ${weeksHTML}
+    <div class="print-totale">
+      <div><div class="pt-label">Totale uscite ${MESI[currentMonth]}</div><div class="pt-value">${tataDays.length} giorni</div></div>
+      <div style="text-align:right"><div class="pt-detail">Orario standard: 17:15–18:30</div><div class="pt-detail">Giornata intera: €50</div></div>
+    </div>`;
+  window.print();
+}
+
+// ── AUTH con auto-rinnovo ──
+let tokenClient;
+window.onload=()=>{
+  render();
+  document.addEventListener('click',()=>{openDay=null;render();});
+  document.getElementById('modalOverlay').addEventListener('click',function(e){if(e.target===this)closeModal();});
+  document.getElementById('confirmOverlay').addEventListener('click',function(e){if(e.target===this)closeConfirm();});
+};
+
+function signIn(){
+  if(!tokenClient){
+    tokenClient=google.accounts.oauth2.initTokenClient({
+      client_id:CLIENT_ID, scope:SCOPES,
+      callback:(resp)=>{
+        if(resp.error){showToast('❌ Errore accesso');return;}
+        accessToken=resp.access_token;
+        tokenExpiry=Date.now()+(resp.expires_in*1000);
+        // Auto-rinnovo 5 min prima della scadenza
+        setTimeout(()=>{ if(accessToken) tokenClient.requestAccessToken({prompt:''}); }, (resp.expires_in-300)*1000);
+        fetchUserInfo();
+      }
+    });
+  }
+  tokenClient.requestAccessToken();
+}
+
+function fetchUserInfo(){
+  fetch('https://www.googleapis.com/oauth2/v3/userinfo',{headers:{Authorization:`Bearer ${accessToken}`}})
+  .then(r=>r.json()).then(info=>{
+    document.getElementById('authArea').innerHTML=`<div class="user-info"><img src="${info.picture}"/><span>${info.given_name}</span><button class="btn-logout" onclick="signOut()">Esci</button></div>`;
+    const btn=document.getElementById('btnPublish');btn.disabled=false;btn.textContent='📅 Pubblica su Google Calendar';
+    showToast('✅ Accesso effettuato!');
+  });
+}
+
+function signOut(){
+  accessToken=null; tokenExpiry=null;
+  document.getElementById('authArea').innerHTML=`<button class="btn-google" onclick="signIn()"><img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" width="16" alt="G"/>Accedi con Google</button>`;
+  const btn=document.getElementById('btnPublish');btn.disabled=true;btn.textContent='🔒 Accedi per pubblicare';
 }
 
 function showToast(msg){const t=document.getElementById('toast');t.textContent=msg;t.classList.add('show');setTimeout(()=>t.classList.remove('show'),3000);}
