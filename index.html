@@ -297,11 +297,11 @@ async function checkAndPublish() {
   const endStr=`${currentYear}-${String(currentMonth+1).padStart(2,'0')}-${String(endOfMonth.getDate()).padStart(2,'0')}T23:59:59Z`;
 
   try {
-    const resp=await fetch(`https://www.googleapis.com/calendar/v3/calendars/primary/events?timeMin=${startOfMonth}&timeMax=${endStr}&q=Samuel&maxResults=200`,{
+    const resp=await fetch(`https://www.googleapis.com/calendar/v3/calendars/primary/events?timeMin=${startOfMonth}&timeMax=${endStr}&q=%23GestioneCasa&maxResults=200`,{
       headers:{Authorization:`Bearer ${accessToken}`}
     });
     const data=await resp.json();
-    const events=(data.items||[]).filter(e=>e.summary&&e.summary.includes('Samuel'));
+    const events=(data.items||[]).filter(e=>e.description&&e.description.includes('#GestioneCasa'));
     existingEventIds=events.map(e=>e.id);
 
     btn.disabled=false; btn.textContent='📅 Pubblica su Google Calendar';
@@ -335,12 +335,13 @@ async function doPublish(){
   btn.disabled=true; btn.innerHTML='<span class="spinner"></span> Pubblicazione...';
   const workdays=getWorkdays(currentYear,currentMonth);
   let created=0,errors=0;
-  for(const d of workdays){
+  for(const d of workdays.filter(d=>d.getDay()!==0&&d.getDay()!==6)){
     const key=dateKey(d); const data=getDayData(key); const ds=key;
     try{
+      const TAG = '#GestioneCasa';
       if(data.id==='speciale'){
         if(data.note){
-          await createEvent({summary:`📝 Samuel – ${data.note.slice(0,50)}`,description:data.note,
+          await createEvent({summary:`📝 Samuel – ${data.note.slice(0,50)}`,description:`${data.note}\n${TAG}`,
             start:{dateTime:`${ds}T08:00:00`,timeZone:'Europe/Rome'},end:{dateTime:`${ds}T18:30:00`,timeZone:'Europe/Rome'},
             colorId:'8',reminders:{useDefault:false,overrides:[{method:'popup',minutes:30}]}});
           created++;
@@ -354,12 +355,12 @@ async function doPublish(){
       else if(data.id==='bovisio_tu_tata'){sum='🏥 Bovisio – Tu porti Samuel';col='4';}
       else if(data.id==='monza_tu_tata'){sum='🏢 Monza – Tu porti Samuel';col='7';}
       else{sum='🏢 Monza – Nonno porta Samuel';col='11';}
-      await createEvent({summary:sum,start:{dateTime:`${ds}T${sh}`,timeZone:'Europe/Rome'},end:{dateTime:`${ds}T${eh}`,timeZone:'Europe/Rome'},colorId:col,reminders:{useDefault:false,overrides:[{method:'popup',minutes:30}]}});
+      await createEvent({summary:sum,description:TAG,start:{dateTime:`${ds}T${sh}`,timeZone:'Europe/Rome'},end:{dateTime:`${ds}T${eh}`,timeZone:'Europe/Rome'},colorId:col,reminders:{useDefault:false,overrides:[{method:'popup',minutes:30}]}});
       if(data.tariffa===0){
-        await createEvent({summary:'⏰ Prendi Samuel 17:15 – tu',start:{dateTime:`${ds}T17:15:00`,timeZone:'Europe/Rome'},end:{dateTime:`${ds}T17:30:00`,timeZone:'Europe/Rome'},colorId:'2',reminders:{useDefault:false,overrides:[{method:'popup',minutes:15}]}});
+        await createEvent({summary:'⏰ Prendi Samuel 17:15 – tu',description:TAG,start:{dateTime:`${ds}T17:15:00`,timeZone:'Europe/Rome'},end:{dateTime:`${ds}T17:30:00`,timeZone:'Europe/Rome'},colorId:'2',reminders:{useDefault:false,overrides:[{method:'popup',minutes:15}]}});
       } else {
         const ts=data.tariffa===50?'👩 Tata Stefania con Samuel – giornata intera':'👩 Tata Stefania con Samuel 17:15–18:30';
-        await createEvent({summary:ts,start:{dateTime:`${ds}T17:15:00`,timeZone:'Europe/Rome'},end:{dateTime:`${ds}T18:30:00`,timeZone:'Europe/Rome'},colorId:'6',reminders:{useDefault:false,overrides:[{method:'popup',minutes:15}]}});
+        await createEvent({summary:ts,description:TAG,start:{dateTime:`${ds}T17:15:00`,timeZone:'Europe/Rome'},end:{dateTime:`${ds}T18:30:00`,timeZone:'Europe/Rome'},colorId:'6',reminders:{useDefault:false,overrides:[{method:'popup',minutes:15}]}});
       }
       created++;
     }catch(e){errors++;}
